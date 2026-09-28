@@ -1,0 +1,247 @@
+31.GitHub Actions reusable workflows and composite actions
+    Composite Action = reusable group of steps
+    Reusable Workflow = reusable complete workflow
+
+    Composite Action
+        Reusable group of steps.
+        Used when the same steps are needed in multiple projects.
+        Runs on the same runner and shares the filesystem with the calling job.
+        Mentioned inside steps.
+        steps:
+        - uses: my-org/my-action@v1
+
+        Example: Setup Python → install dependencies → run tests.
+
+    Reusable Workflow
+        Reusable complete workflow / jobs.
+        Used when the entire CI/CD process is similar across projects.
+        Has its own jobs and runner.
+        Called at the jobs level.
+        jobs:
+        deploy:
+            uses: my-org/workflows/deploy.yml@v1
+
+        Example: Checkout → Test → Docker Build → Push → Kubernetes Deploy.   
+
+32.GitHub Actions Docker actions vs JavaScript actions vs composite
+    I have multiple steps
+    and want to reuse them
+            ↓
+    COMPOSITE ACTION
+
+
+    I need a special environment
+    with specific dependencies
+            ↓
+        DOCKER ACTION
+
+
+    I need to write code
+    that interacts with GitHub
+            ↓
+    JAVASCRIPT ACTION
+
+    Composite → reuse a set of steps
+    Docker → run action inside a container
+    JavaScript → write custom JavaScript/Node.js code as an action
+
+33.GitHub Actions Self-Hosted Runners
+    Runner Group → controls which repositories/jobs are allowed to use those runners
+    Label → tells what the runner can do
+    ARC → automatically creates, scales, and removes self-hosted runners in Kubernetes
+
+    Runner
+        Machine that executes GitHub Actions jobs.
+    Runner Group
+        Controls which repositories/jobs are allowed to use runners.
+        Group → Access control
+    Label
+        Describes what a runner can do
+        linux
+        gpu
+        high-memory
+        production
+    ARC
+        Actions Runner Controller — runs self-hosted GitHub Actions runners as Kubernetes Pods and automatically creates/scales/removes them based on job demand.
+        ARC → Automatically manages runners
+
+    Runner → Where the job runs
+    Group  → Who can use it
+    Label  → What it can do
+    ARC    → Automatically manages it
+
+34.GitLab CI parent-child pipelines and multi-project pipelines
+
+    Parent-Child Pipeline — Short Notes
+    Meaning: A parent pipeline triggers child pipelines within the same GitLab project.
+    Used to split a large pipeline into smaller pipelines.
+    Common in monorepos.
+    Parent decides which child pipeline should run based on changes.
+
+    Same Project
+     ↓
+    Parent Pipeline
+    ↙   ↓   ↘
+    Frontend Backend Database
+    Child   Child    Child
+
+    Multi-Project Pipeline — Short Notes
+    Meaning: One GitLab project triggers a pipeline in another separate project.
+    Project A: Runs its own pipeline.
+    Project B: Runs its own pipeline after being triggered.
+    Connection: Defined in GitLab CI configuration.
+    Project B can have any name; deployment was just an example.
+    Common use: separate application and infrastructure/deployment responsibilities.
+
+    Project A
+    ↓
+    Pipeline A
+    ↓ trigger
+    Project B
+    ↓
+    Pipeline B
+
+    Different projects → pipelines trigger each other.
+
+35.Pipeline Security
+
+    Supply-chain attack: Attacker compromises something your pipeline trusts.
+
+    Dependency Confusion → Malicious public package has same name as internal package → Use private registry
+    Compromised Action → Third-party action gets hacked → Pin action to SHA
+    PR Attack → Malicious PR runs code in pipeline → Don't expose secrets to untrusted PRs
+    Artifact Tampering → Build artifact is modified → Sign + verify artifacts (Cosign)
+    OIDC → Avoid long-lived cloud credentials → Use temporary credentials
+    Dependency Scanning → Find vulnerable packages → Dependabot / Renovate / Snyk
+    Token Permissions → Too much pipeline access → Least privilege
+
+    Remember:
+    Trust only what you can verify.
+
+                SUPPLY-CHAIN ATTACKS
+                        │
+        ┌───────────────┼────────────────┐
+        ↓               ↓                ↓
+    Dependency       Third-party        Malicious
+    confusion          action              PR
+        │               │                │
+        ↓               ↓                ↓
+    Private registry  Pin SHA       Don't expose secrets
+        
+                        ↓
+                Artifact tampering
+                        ↓
+                Sign + verify
+
+36.Secrets Management 
+    1. OIDC
+    Used for temporary cloud credentials.
+    CI/CD → OIDC token → Cloud provider verifies → temporary credentials.
+    No permanent AWS access keys stored in CI.
+    Credentials expire automatically.
+
+    Remember: OIDC = temporary cloud access
+
+    2. HashiCorp Vault
+    Central place to store and manage secrets.
+    Can provide dynamic/short-lived secrets.
+    Supports secret rotation, policies, and audit logs.
+    Pipeline can authenticate using OIDC/AppRole.
+
+    Remember: Vault = centralized secret management
+
+    3. Secret Scanning
+    Scans code/commits for accidentally exposed secrets.
+    Example: AWS keys, API tokens, passwords.
+    Can block a pipeline when a secret is detected.
+
+    Production standard
+    Cloud credentials → OIDC
+    Other secrets     → Vault / platform secrets
+    Code protection   → Secret scanning
+
+    Avoid: Long-lived access keys.
+
+37.Webhook Security — Short Notes
+    Webhook → GitHub/GitLab sends a request to CI when an event happens.
+    Problem → Anyone who knows the webhook URL could try to trigger the pipeline.
+    Webhook Secret → Shared secret between GitHub/GitLab and CI.
+    Signature → GitHub/GitLab creates a signature using the secret and sends it with the webhook.
+    Verification → CI checks the signature.
+    Correct → ✅ Process webhook
+    Wrong/missing → ❌ Reject webhook
+    HTTPS → Protects data while traveling over the network.
+    Rate limiting → Prevents webhook flooding.
+    Secret rotation → Change the secret periodically.
+    Logging → Keep webhook activity for auditing.
+
+    Webhook URL = Where to send
+    Secret + Signature = Prove who sent it
+    Verification = Accept or reject
+
+38.Container Image Building in CI — Short Notes
+    1. Kaniko
+        Builds Docker images without a Docker daemon.
+        Useful for Kubernetes-based CI runners.
+        Reads the Dockerfile and creates the image.
+        Remember: Kaniko → No Docker daemon
+
+    2. BuildKit + Remote Cache
+        Modern image builder focused on fast/efficient builds.
+        Can store build cache in a registry.
+        Next CI build downloads the cache and reuses unchanged work.
+        Uses --cache-to and --cache-from.
+        Remember: BuildKit → Caching / faster builds
+
+    3. buildx / Multi-Platform
+        Builds the same image for different CPU architectures.
+        Example:
+        linux/amd64 → Intel/AMD
+        linux/arm64 → Apple Silicon/ARM
+        One Dockerfile can produce both architectures.
+        Remember: buildx → Multiple architectures
+
+    🧠 One-line memory
+        Kaniko = No Docker daemon
+        BuildKit = Build cache
+        buildx = Multiple CPU architectures
+
+39.Terraform CI/CD 
+    PR → terraform plan → shows what will change.
+    Use terraform plan -out=tfplan → saves the reviewed plan.
+    Post plan output to the PR for review.
+    Production → manual human approval before apply.
+    Apply the saved plan: terraform apply tfplan
+    Separate state + credentials for dev/staging/prod.
+    Run terraform fmt + terraform validate + TFLint in CI.
+    Dev can auto-apply; production should be approval-gated.
+
+    Remember:
+    plan = preview → review = safety check → apply = execute
+
+    terraform plan
+        ↓
+    Human reviews
+        ↓
+    ⏸️ Pipeline waits
+        ↓
+    Human clicks APPROVE
+        ↓
+    ▶️ Pipeline continues
+        ↓
+    terraform apply tfplan
+        ↓
+    Production updated
+
+40.Database Migrations — Short Notes
+    Migration = changing database schema safely.
+    Expand → Add new column/table; don't remove old one.
+    Migrate → Copy/backfill old data into the new structure.
+    Contract → After everything is using the new schema, remove old column/table.
+    Main goal → Old and new application versions should both work with the database.
+    ❌ Don't make destructive DB changes together with a code deployment.
+    Test migrations in staging before production.
+    Large backfills should usually run as background jobs.
+
+    Remember:
+    Expand → Migrate → Contract
